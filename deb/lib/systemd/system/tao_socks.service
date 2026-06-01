@@ -1,0 +1,13 @@
+[Unit]
+Description=Socks Service
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+ExecStart=socks5 -c /etc/taosocks/config.yaml
+User=root
+
+[Install]
+WantedBy=multi-user.target
+

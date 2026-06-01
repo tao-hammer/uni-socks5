@@ -1,0 +1,14 @@
+#!/bin/bash
+
+chmod 777 /usr/local/bin/socks5
+chmod 777 /lib/systemd/system/tao_socks.service
+chmod 777 /etc/taosocks/config.yaml
+
+systemctl daemon-reload
+systemctl enable tao_socks.service
+
+if systemctl is-active --quiet tao_socks.service; then
+    systemctl restart tao_socks.service
+else
+    systemctl start tao_socks.service
+fi

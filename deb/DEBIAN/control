@@ -1,0 +1,7 @@
+Package: tao-socks
+Version: 1.0.0
+Architecture: amd64
+Section: base
+Priority: optional
+Maintainer: taotao
+Description: tao socks5 server

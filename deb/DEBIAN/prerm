@@ -1,0 +1,3 @@
+#!/bin/bash
+systemctl stop tao_socks.service
+systemctl disable tao_socks.service

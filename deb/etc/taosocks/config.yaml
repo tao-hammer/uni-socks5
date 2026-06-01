@@ -1,0 +1,7 @@
+port: 28000
+skipPrivateCheck: false
+logFlag: false
+coreNum: 0 #0=> core*2
+user:
+  username: admin
+  password: admin
