@@ -1,0 +1,7 @@
+Package: tao-socks
+Version: 1.0.6-1
+Section: net
+Priority: optional
+Architecture: %%ARCH%%
+Maintainer: taotao <taotao@localhost>
+Description: Tao SOCKS5 proxy server with LuCI

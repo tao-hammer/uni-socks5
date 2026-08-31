@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"socks5/config"
 	"strings"
@@ -24,6 +25,7 @@ var username string
 var password string
 var core int
 var c string
+var logDir string
 
 // var userList TODO 对于登录用户，在周期内不进行校验，此时还有一个问题，就是如经路由会有多设备公用同一ip问题（是否试用ip+端口进行配置）
 // 试用流控（令牌桶）
@@ -36,6 +38,7 @@ func main() {
 	flag.BoolVar(&skipPrivateCheck, "skip", false, "局域网免校验,默认关闭")
 	flag.StringVar(&username, "u", "admin", "用户名")
 	flag.StringVar(&password, "p", "Qwer1234-", "密码")
+	flag.StringVar(&logDir, "logdir", "", "日志目录，默认 output")
 	flag.Parse()
 	if c != "" {
 		// 加载配置
@@ -49,6 +52,12 @@ func main() {
 		skipPrivateCheck = config.SkipPrivateCheck
 		username = config.User.Username
 		password = config.User.Password
+		if config.LogDir != "" {
+			logDir = config.LogDir
+		}
+	}
+	if logDir == "" {
+		logDir = "output"
 	}
 	if core == 0 {
 		core = runtime.NumCPU() * 2
@@ -253,53 +262,27 @@ func WriteFileLog(str string, isAuth int) {
 	}
 	f1, err1 := OpenFile(time.Now().Format("20060102") + authName + ".log")
 	if err1 != nil {
-		log.Fatal(err1.Error())
+		log.Printf("write log: %v", err1)
+		return
 	}
 	defer f1.Close()
-	_, err1 = io.WriteString(f1, str+"\r\n") //写入文件(字符串)
+	_, err1 = io.WriteString(f1, str+"\r\n")
 	if err1 != nil {
-		log.Fatal(err1.Error())
+		log.Printf("write log: %v", err1)
 	}
 }
 func OpenFile(filename string) (*os.File, error) {
-	//_, dir, _, _ := runtime.Caller(1)
-	dir := "./"
-	if !strings.HasSuffix(dir, "/") {
-		dir = dir + "/"
+	dir := logDir
+	if dir == "" {
+		dir = "output"
 	}
-	dir = dir + "output"
-	if !isExist(dir) {
-		createFile(dir)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
 	}
-	fileAllName := dir + "/" + filename
-	if _, err := os.Stat(fileAllName); os.IsNotExist(err) {
-		//fmt.Println("文件不存在")
-		return os.Create(fileAllName) //创建文件
-	}
-	//fmt.Println("文件存在")
-	return os.OpenFile(fileAllName, os.O_APPEND, 0666) //打开文件
+	fileAllName := filepath.Join(dir, filename)
+	return os.OpenFile(fileAllName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0666)
 }
 
-// 调用os.MkdirAll递归创建文件夹
-func createFile(filePath string) error {
-	if !isExist(filePath) {
-		err := os.MkdirAll(filePath, os.ModePerm)
-		return err
-	}
-	return nil
-}
-
-// 判断所给路径文件/文件夹是否存在(返回true是存在)
-func isExist(path string) bool {
-	_, err := os.Stat(path) //os.Stat获取文件信息
-	if err != nil {
-		if os.IsExist(err) {
-			return true
-		}
-		return false
-	}
-	return true
-}
 func printLog(logInfo string, flag bool, size int) {
 	if flag {
 		logInfo = fmt.Sprintf(logInfo+" 【上行】%d KB %d B \n", size/1024, size%1024)

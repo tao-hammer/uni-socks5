@@ -1,0 +1,16 @@
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+
+rm -f /var/etc/taosocks.yaml /etc/config/taosocks-opkg
+
+uci -q get firewall.taosocks >/dev/null 2>&1 && {
+	uci -q delete firewall.taosocks >/dev/null 2>&1
+	uci -q commit firewall >/dev/null 2>&1
+	if command -v fw4 >/dev/null 2>&1; then
+		fw4 -q reload >/dev/null 2>&1 || true
+	elif [ -x /etc/init.d/firewall ]; then
+		/etc/init.d/firewall reload >/dev/null 2>&1 || true
+	fi
+}
+
+exit 0

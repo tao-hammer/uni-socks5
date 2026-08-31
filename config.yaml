@@ -2,6 +2,7 @@ port: 28000
 skipPrivateCheck: false
 logFlag: false
 coreNum: 7
+logDir: output
 user:
   username: admin
   password: admin

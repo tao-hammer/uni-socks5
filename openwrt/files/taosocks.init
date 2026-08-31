@@ -1,0 +1,152 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+PROG=/usr/bin/taosocks
+YAML=/var/etc/taosocks.yaml
+FW_SECTION=taosocks
+
+yaml_escape() {
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+bool_yaml() {
+	[ "$1" = "1" ] && echo true || echo false
+}
+
+write_yaml() {
+	local port skip log_flag core_num username password log_dir
+
+	config_get port main port 28000
+	config_get_bool skip main skip_private_check 0
+	config_get_bool log_flag main log_flag 0
+	config_get core_num main core_num 0
+	config_get username main username admin
+	config_get password main password admin
+	config_get log_dir main log_dir /tmp/taosocks
+
+	[ -n "$port" ] || port=28000
+	[ -n "$core_num" ] || core_num=0
+	[ -n "$log_dir" ] || log_dir=/tmp/taosocks
+
+	mkdir -p /var/etc "$log_dir"
+	cat > "$YAML" <<EOF
+port: ${port}
+skipPrivateCheck: $(bool_yaml "$skip")
+logFlag: $(bool_yaml "$log_flag")
+coreNum: ${core_num}
+logDir: "$(yaml_escape "$log_dir")"
+user:
+  username: "$(yaml_escape "$username")"
+  password: "$(yaml_escape "$password")"
+EOF
+	chmod 600 "$YAML"
+}
+
+apply_autostart() {
+	local auto_start
+	config_get_bool auto_start main auto_start 1
+	if [ "$auto_start" = "1" ]; then
+		/etc/init.d/taosocks enable >/dev/null 2>&1
+	else
+		/etc/init.d/taosocks disable >/dev/null 2>&1
+	fi
+}
+
+fw_reload() {
+	# Never block service start/stop on firewall lock.
+	(
+		if command -v fw4 >/dev/null 2>&1; then
+			fw4 -q reload
+		elif [ -x /etc/init.d/firewall ]; then
+			/etc/init.d/firewall reload
+		fi
+	) >/dev/null 2>&1 &
+}
+
+remove_firewall() {
+	uci -q get firewall.${FW_SECTION} >/dev/null 2>&1 || return 0
+	uci -q delete firewall.${FW_SECTION} >/dev/null 2>&1
+	uci -q commit firewall >/dev/null 2>&1
+	fw_reload
+}
+
+apply_firewall() {
+	local open_fw src port
+
+	config_get_bool open_fw main open_firewall 1
+	config_get src main firewall_src '*'
+	config_get port main port 28000
+	[ -n "$port" ] || port=28000
+	[ -n "$src" ] || src='*'
+
+	if [ "$open_fw" != "1" ]; then
+		remove_firewall
+		return 0
+	fi
+
+	uci -q batch >/dev/null 2>&1 <<-EOF
+		delete firewall.${FW_SECTION}
+		set firewall.${FW_SECTION}=rule
+		set firewall.${FW_SECTION}.name='Allow-TaoSOCKS'
+		set firewall.${FW_SECTION}.src='${src}'
+		set firewall.${FW_SECTION}.proto='tcp'
+		set firewall.${FW_SECTION}.dest_port='${port}'
+		set firewall.${FW_SECTION}.target='ACCEPT'
+		set firewall.${FW_SECTION}.family='ipv4'
+		commit firewall
+	EOF
+	fw_reload
+}
+
+start_service() {
+	/usr/lib/taosocks/ensure-uci.sh >/dev/null 2>&1 || true
+	config_load taosocks >/dev/null 2>&1
+
+	local enabled
+	config_get_bool enabled main enabled 1
+	if [ "$enabled" != "1" ]; then
+		remove_firewall
+		return 0
+	fi
+
+	write_yaml
+	logger -t taosocks "start $PROG -c $YAML"
+
+	procd_open_instance
+	procd_set_param command "$PROG" -c "$YAML"
+	procd_set_param respawn 5 5 0
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_started() {
+	config_load taosocks >/dev/null 2>&1
+	apply_autostart
+	apply_firewall
+}
+
+service_stopped() {
+	[ -s /etc/config/taosocks ] || return 0
+	config_load taosocks >/dev/null 2>&1
+	local enabled open_fw
+	config_get_bool enabled main enabled 1
+	config_get_bool open_fw main open_firewall 1
+	if [ "$enabled" != "1" ] || [ "$open_fw" != "1" ]; then
+		remove_firewall
+	fi
+}
+
+reload_service() {
+	stop
+	start
+}
+
+service_triggers() {
+	procd_add_reload_trigger taosocks
+	procd_add_reload_interface_trigger wan
+	procd_add_reload_interface_trigger lan
+}

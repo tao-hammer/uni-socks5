@@ -1,0 +1,39 @@
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+
+# Create missing config before opkg hashes leftover conffiles from old ipks.
+if [ -x /usr/lib/taosocks/ensure-config-file.sh ]; then
+	/usr/lib/taosocks/ensure-config-file.sh >/dev/null 2>&1 || true
+elif [ -x /usr/lib/taosocks/ensure-uci.sh ]; then
+	/usr/lib/taosocks/ensure-uci.sh >/dev/null 2>&1 || true
+else
+	mkdir -p /etc/config 2>/dev/null || true
+	if [ ! -f /etc/config/taosocks ] || [ ! -s /etc/config/taosocks ]; then
+		cat > /etc/config/taosocks <<'EOF'
+config taosocks 'main'
+	option enabled '1'
+	option auto_start '1'
+	option port '28000'
+	option skip_private_check '0'
+	option log_flag '0'
+	option core_num '0'
+	option username 'admin'
+	option password 'admin'
+	option log_dir '/tmp/taosocks'
+	option open_firewall '1'
+	option firewall_src '*'
+EOF
+		chmod 600 /etc/config/taosocks 2>/dev/null || true
+	else
+		chmod u+rw /etc/config/taosocks 2>/dev/null || true
+	fi
+fi
+
+killall -q taosocks 2>/dev/null || true
+ubus call service delete '{"name":"taosocks"}' >/dev/null 2>&1 || true
+
+if [ -x /etc/init.d/taosocks ]; then
+	/etc/init.d/taosocks disable >/dev/null 2>&1 || true
+fi
+
+exit 0

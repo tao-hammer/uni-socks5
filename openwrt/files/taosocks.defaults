@@ -1,0 +1,53 @@
+#!/bin/sh
+
+# File exists with content → keep it. Missing/empty → create.
+if [ -x /usr/lib/taosocks/ensure-config-file.sh ]; then
+	/usr/lib/taosocks/ensure-config-file.sh
+else
+	ROOT="${IPKG_INSTROOT:-}"
+	mkdir -p "${ROOT}/etc/config" 2>/dev/null || true
+	CONF="${ROOT}/etc/config/taosocks"
+	if [ ! -f "$CONF" ] || [ ! -s "$CONF" ]; then
+		cat > "$CONF" <<'EOF'
+config taosocks 'main'
+	option enabled '1'
+	option auto_start '1'
+	option port '28000'
+	option skip_private_check '0'
+	option log_flag '0'
+	option core_num '0'
+	option username 'admin'
+	option password 'admin'
+	option log_dir '/tmp/taosocks'
+	option open_firewall '1'
+	option firewall_src '*'
+EOF
+		chmod 600 "$CONF" 2>/dev/null || true
+	else
+		chmod u+rw "$CONF" 2>/dev/null || true
+		[ -r "$CONF" ] && [ -w "$CONF" ] || chmod 600 "$CONF" 2>/dev/null || true
+	fi
+fi
+
+ensure() {
+	uci -q show "taosocks.main.$1" >/dev/null 2>&1 && return 0
+	uci -q set "taosocks.main.$1=$2" >/dev/null 2>&1
+}
+
+uci -q show taosocks.main >/dev/null 2>&1 || uci -q set taosocks.main=taosocks >/dev/null 2>&1
+
+ensure enabled '1'
+ensure auto_start '1'
+ensure port '28000'
+ensure skip_private_check '0'
+ensure log_flag '0'
+ensure core_num '0'
+ensure username 'admin'
+ensure password 'admin'
+ensure log_dir '/tmp/taosocks'
+ensure open_firewall '1'
+ensure firewall_src '*'
+
+uci -q commit taosocks >/dev/null 2>&1
+rm -f /etc/config/taosocks-opkg
+exit 0

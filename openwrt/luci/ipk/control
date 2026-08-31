@@ -1,0 +1,8 @@
+Package: luci-app-taosocks
+Version: 1.0.6-1
+Depends: tao-socks
+Section: luci
+Priority: optional
+Architecture: all
+Maintainer: taotao <taotao@localhost>
+Description: LuCI support for Tao SOCKS5
