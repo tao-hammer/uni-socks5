@@ -14,3 +14,7 @@ release/Linux-Arm64/socks5
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
+# 编译产物
+socks5
+*.exe
+output/
