@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const version = "1.0.6-1"
+const version = "1.0.7-1"
 
 type target struct {
 	Folder  string

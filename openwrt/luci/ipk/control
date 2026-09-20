@@ -1,5 +1,5 @@
 Package: luci-app-taosocks
-Version: 1.0.6-1
+Version: 1.0.7-1
 Depends: tao-socks
 Section: luci
 Priority: optional

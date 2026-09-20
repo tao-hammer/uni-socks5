@@ -44,10 +44,10 @@ sh scripts/build-ipk.sh
 
 | 目录 | 适用 | 安装文件 |
 |---|---|---|
-| `dist/x86_64/` | x86_64 | `tao-socks_1.0.6-1_x86_64.ipk` |
-| `dist/i386/` | 32 位 x86 | `tao-socks_1.0.6-1_i386_pentium4.ipk` |
-| `dist/armv7/` | 常见 32 位 ARM | `tao-socks_1.0.6-1_arm_cortex-a7_neon-vfpv4.ipk` |
-| `dist/aarch64/` | ARM64 | `tao-socks_1.0.6-1_aarch64_generic.ipk` |
+| `dist/x86_64/` | x86_64 | `tao-socks_1.0.7-1_x86_64.ipk` |
+| `dist/i386/` | 32 位 x86 | `tao-socks_1.0.7-1_i386_pentium4.ipk` |
+| `dist/armv7/` | 常见 32 位 ARM | `tao-socks_1.0.7-1_arm_cortex-a7_neon-vfpv4.ipk` |
+| `dist/aarch64/` | ARM64 | `tao-socks_1.0.7-1_aarch64_generic.ipk` |
 
 设备架构可在 SSH 里看：
 
@@ -58,7 +58,7 @@ opkg print-architecture
 若架构名不完全一致（例如 `aarch64_cortex-a53`、`i386`），可强制安装静态包：
 
 ```sh
-opkg install tao-socks_1.0.6-1_aarch64_generic.ipk --force-architecture
+opkg install tao-socks_1.0.7-1_aarch64_generic.ipk --force-architecture
 ```
 
 ### 安装
@@ -66,7 +66,7 @@ opkg install tao-socks_1.0.6-1_aarch64_generic.ipk --force-architecture
 把对应平台目录里的 ipk 拷到设备后（只需这一个）：
 
 ```sh
-opkg install /tmp/tao-socks_1.0.6-1_x86_64.ipk
+opkg install /tmp/tao-socks_1.0.7-1_x86_64.ipk
 ```
 
 默认 **启用并开机自启**，监听 **28000**，账密 **admin / admin**，并在 **wan** 放行该端口。  

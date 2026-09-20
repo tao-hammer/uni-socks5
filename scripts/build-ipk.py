@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DIST = ROOT / "dist"
-VERSION = "1.0.0-1"
+VERSION = "1.0.7-1"
 
 # goarch / goarm -> OpenWrt Architecture field
 TARGETS = [
