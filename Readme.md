@@ -51,6 +51,18 @@ go build -ldflags="-s -w" -o taosocks
 | `-skip` | 关 | RFC1918 私网来源免认证 |
 | `-udp-timeout` | `300` | UDP 会话空闲超时（秒） |
 | `-core` | `0` | 兼容保留（Go 运行时自动调度，无实际意义） |
+| `-max-conns` | `0` | 最大并发连接数，`0` = 不限制（可选安全组件） |
+| `-auth-limit` | `0` | 单 IP 认证失败 N 次后封锁，`0` = 关闭（可选安全组件） |
+| `-auth-block` | `300` | 认证封锁时长（秒） |
+| `-idle-timeout` | `0` | 连接空闲超时（秒），`0` = 不限制（可选安全组件） |
+
+### 安全说明
+
+- 所有安全组件**默认关闭**，按需开启；开启后启动横幅会打印当前生效值
+- 密码使用恒定时间比较；认证阶段有 30 秒读超时；单连接 panic 有兜底
+- 建议公网暴露时使用 `-c` 配置文件传密码（`-p` 会出现在进程列表里），并将配置文件权限设为 `600`
+- 日志文件权限 `0600`、日志目录 `0755`
+- 系统层可配合 fail2ban / 防火墙做额外防护
 
 ### 配置文件（config.yaml）
 
@@ -60,6 +72,11 @@ skipPrivateCheck: false
 logFlag: false
 coreNum: 0          # 兼容保留
 udpTimeout: 300     # UDP 会话空闲超时（秒），0 或未设置则用默认值
+# —— 可选安全组件，0 = 关闭（默认）——
+maxConns: 0         # 最大并发连接数
+authLimit: 0        # 单 IP 认证失败 N 次后封锁
+authBlock: 300      # 认证封锁时长（秒）
+idleTimeout: 0      # 连接空闲超时（秒）
 user:
   username: admin
   password: admin

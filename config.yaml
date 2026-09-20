@@ -1,7 +1,13 @@
 port: 28000
 skipPrivateCheck: false
 logFlag: false
-coreNum: 7
+coreNum: 0          # 兼容保留
+udpTimeout: 300     # UDP 会话空闲超时（秒）
+# —— 可选安全组件，0 = 关闭（默认）——
+maxConns: 0         # 最大并发连接数
+authLimit: 0        # 单 IP 认证失败 N 次后封锁
+authBlock: 300      # 认证封锁时长（秒）
+idleTimeout: 0      # 连接空闲超时（秒）
 user:
   username: admin
   password: admin

@@ -6,6 +6,10 @@ type Config struct {
 	CoreNum          int    `yaml:"coreNum"`
 	LogFlag          bool   `yaml:"logFlag"`
 	UdpTimeout       int    `yaml:"udpTimeout"`
+	MaxConns         int    `yaml:"maxConns"`
+	AuthLimit        int    `yaml:"authLimit"`
+	AuthBlock        int    `yaml:"authBlock"`
+	IdleTimeout      int    `yaml:"idleTimeout"`
 	User             struct {
 		Username string `yaml:"username"`
 		Password string `yaml:"password"`
