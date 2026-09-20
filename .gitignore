@@ -16,3 +16,6 @@ release/Linux-Arm64/socks5
 # vendor/
 
 dist/
+# 编译产物
+socks5
+output/
