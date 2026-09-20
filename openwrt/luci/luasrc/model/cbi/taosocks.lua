@@ -52,8 +52,13 @@ o.default = "admin"
 o.rmempty = false
 
 o = s:option(Flag, "skip_private_check", translate("内网免认证"))
-o.description = translate("来源地址为 10.10.* 的客户端跳过用户名和密码")
+o.description = translate("来源为 RFC1918 私网地址（10.x、172.16-31.x、192.168.x）的客户端跳过用户名和密码")
 o.default = "0"
+
+o = s:option(Value, "udp_timeout", translate("UDP 会话超时(秒)"))
+o.datatype = "uinteger"
+o.default = "300"
+o.description = translate("UDP ASSOCIATE 中继的空闲超时，超时自动回收；0 或留空用默认值 300")
 
 o = s:option(Value, "core_num", translate("工作线程数"))
 o.datatype = "uinteger"

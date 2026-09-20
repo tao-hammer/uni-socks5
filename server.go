@@ -57,6 +57,9 @@ func main() {
 		if conf.LogDir != "" {
 			logDir = conf.LogDir
 		}
+		if conf.UdpTimeout > 0 {
+			udpTimeout = conf.UdpTimeout
+		}
 	}
 	if logDir == "" {
 		logDir = "output"

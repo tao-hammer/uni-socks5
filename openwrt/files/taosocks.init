@@ -17,7 +17,7 @@ bool_yaml() {
 }
 
 write_yaml() {
-	local port skip log_flag core_num username password log_dir
+	local port skip log_flag core_num username password log_dir udp_timeout
 
 	config_get port main port 28000
 	config_get_bool skip main skip_private_check 0
@@ -26,10 +26,12 @@ write_yaml() {
 	config_get username main username admin
 	config_get password main password admin
 	config_get log_dir main log_dir /tmp/taosocks
+	config_get udp_timeout main udp_timeout 300
 
 	[ -n "$port" ] || port=28000
 	[ -n "$core_num" ] || core_num=0
 	[ -n "$log_dir" ] || log_dir=/tmp/taosocks
+	[ -n "$udp_timeout" ] || udp_timeout=300
 
 	mkdir -p /var/etc "$log_dir"
 	cat > "$YAML" <<EOF
@@ -38,6 +40,7 @@ skipPrivateCheck: $(bool_yaml "$skip")
 logFlag: $(bool_yaml "$log_flag")
 coreNum: ${core_num}
 logDir: "$(yaml_escape "$log_dir")"
+udpTimeout: ${udp_timeout}
 user:
   username: "$(yaml_escape "$username")"
   password: "$(yaml_escape "$password")"

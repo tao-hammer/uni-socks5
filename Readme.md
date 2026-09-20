@@ -1,6 +1,7 @@
 # uni-socks5
 
 轻量 SOCKS5 代理。支持直接运行、Debian 包，以及 OpenWrt / LEDE 的 ipk + LuCI。
+支持 TCP 转发（CONNECT）和 UDP 中继（UDP ASSOCIATE），QUIC、语音、DNS 等 UDP 流量可以走隧道。
 
 ## 交叉编译（直接出二进制）
 
@@ -83,10 +84,11 @@ LuCI：`服务` → `Tao SOCKS5`。
 | `auto_start` | `1` | 是否开机自启 |
 | `port` | `28000` | 监听端口 |
 | `username` / `password` | `admin` | 认证账密 |
-| `skip_private_check` | `0` | `10.10.*` 来源免认证 |
-| `core_num` | `0` | 工作线程，`0` = CPU 核数 × 2 |
+| `skip_private_check` | `0` | RFC1918 私网来源（10.x、172.16-31.x、192.168.x）免认证 |
+| `core_num` | `0` | 兼容保留，无实际意义 |
 | `log_flag` | `0` | 是否写文件日志 |
 | `log_dir` | `/tmp/taosocks` | 日志目录 |
+| `udp_timeout` | `300` | UDP 中继会话空闲超时（秒） |
 | `open_firewall` | `1` | 是否自动放行端口 |
 | `firewall_src` | `wan` | 放行区域：`wan` / `lan` / `*` |
 
@@ -104,7 +106,11 @@ uci commit taosocks
 /etc/init.d/taosocks disable
 ```
 
-卸载：
+### 关于 UDP 中继
+
+UDP ASSOCIATE 的中继端口是**临时端口**（每次会话随机）。局域网内的客户端使用 UDP 中继无任何障碍；但**外网客户端**经防火墙访问时，UDP 数据报到达临时端口会被默认丢弃——如需外网 UDP，除放行 TCP 端口外，还要在外层（如 frp、路由器端口转发）显式转发 UDP，或将使用场景限制在局域网内。
+
+### 卸载
 
 ```sh
 opkg remove tao-socks

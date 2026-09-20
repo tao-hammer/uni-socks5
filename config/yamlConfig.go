@@ -6,6 +6,7 @@ type Config struct {
 	CoreNum          int    `yaml:"coreNum"`
 	LogFlag          bool   `yaml:"logFlag"`
 	LogDir           string `yaml:"logDir"`
+	UdpTimeout       int    `yaml:"udpTimeout"`
 	User             struct {
 		Username string `yaml:"username"`
 		Password string `yaml:"password"`
