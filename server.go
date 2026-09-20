@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -29,6 +30,14 @@ var c string
 var udpTimeout int
 var logDir string
 
+// ---- 可选安全组件（默认关闭，0 = 不启用）----
+var maxConns int     // 最大并发连接数
+var authLimit int    // 单 IP 认证失败次数上限，达到后封锁
+var authBlockSec int // 认证失败封锁时长（秒）
+var idleTimeout int  // 连接空闲超时（秒），防慢速连接长期占用
+
+var connSem chan struct{} // maxConns > 0 时初始化
+
 const authTimeout = 30 * time.Second //认证阶段的读超时，防止半开连接拖死服务
 
 func main() {
@@ -40,6 +49,10 @@ func main() {
 	flag.StringVar(&username, "u", "admin", "用户名")
 	flag.StringVar(&password, "p", "Qwer1234-", "密码")
 	flag.IntVar(&udpTimeout, "udp-timeout", 300, "UDP 会话空闲超时(秒)")
+	flag.IntVar(&maxConns, "max-conns", 0, "最大并发连接数,0=不限制")
+	flag.IntVar(&authLimit, "auth-limit", 0, "单IP认证失败N次后封锁,0=关闭")
+	flag.IntVar(&authBlockSec, "auth-block", 300, "认证封锁时长(秒)")
+	flag.IntVar(&idleTimeout, "idle-timeout", 0, "连接空闲超时(秒),0=不限制")
 	flag.StringVar(&logDir, "logdir", "", "日志目录，默认 output")
 	flag.Parse()
 	if c != "" {
@@ -54,11 +67,23 @@ func main() {
 		skipPrivateCheck = conf.SkipPrivateCheck
 		username = conf.User.Username
 		password = conf.User.Password
-		if conf.LogDir != "" {
-			logDir = conf.LogDir
-		}
 		if conf.UdpTimeout > 0 {
 			udpTimeout = conf.UdpTimeout
+		}
+		if conf.MaxConns > 0 {
+			maxConns = conf.MaxConns
+		}
+		if conf.AuthLimit > 0 {
+			authLimit = conf.AuthLimit
+		}
+		if conf.AuthBlock > 0 {
+			authBlockSec = conf.AuthBlock
+		}
+		if conf.IdleTimeout > 0 {
+			idleTimeout = conf.IdleTimeout
+		}
+		if conf.LogDir != "" {
+			logDir = conf.LogDir
 		}
 	}
 	if logDir == "" {
@@ -67,7 +92,12 @@ func main() {
 	if core == 0 {
 		core = runtime.NumCPU() * 2
 	}
+	if maxConns > 0 {
+		connSem = make(chan struct{}, maxConns)
+	}
 	fmt.Printf("核心数量: %d, UDP空闲超时: %ds, 局域网免认证: %v\n", core, udpTimeout, skipPrivateCheck)
+	fmt.Printf("安全组件: 连接上限=%d, 认证封锁=%d次/%ds, 空闲超时=%ds\n",
+		maxConns, authLimit, authBlockSec, idleTimeout)
 
 	server, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -106,6 +136,17 @@ func process(client net.Conn) {
 		client.Close()
 	}()
 
+	// 可选安全组件：并发连接数上限
+	if connSem != nil {
+		select {
+		case connSem <- struct{}{}:
+			defer func() { <-connSem }()
+		default:
+			log.Printf("【%s】超过最大连接数(%d)，拒绝", client.RemoteAddr(), maxConns)
+			return
+		}
+	}
+
 	remote := client.RemoteAddr().String()
 	if err := Socks5Auth(client); err != nil {
 		log.Printf("【%s】认证错误: %v", remote, err)
@@ -113,6 +154,10 @@ func process(client net.Conn) {
 			go WriteFileLog("【ip】"+remote+"【时间】"+time.Now().Format("2006-01-02 15:04:05")+";认证错误:"+err.Error(), 2)
 		}
 		return
+	}
+	// 可选安全组件：连接空闲超时（认证阶段的 deadline 已清除，这里接管）
+	if idleTimeout > 0 {
+		client = &idleTimeoutConn{Conn: client, idle: time.Duration(idleTimeout) * time.Second}
 	}
 	target, isUDP, logInfo, err := Socks5Connect(client)
 	if err != nil {
@@ -131,6 +176,61 @@ func process(client net.Conn) {
 		return
 	}
 	Socks5Forward(client, logInfo, target)
+}
+
+// authGuard 单 IP 认证失败计数与封锁（可选安全组件，-auth-limit 开启）
+type authGuardT struct {
+	mu      sync.Mutex
+	fails   map[string]int
+	blocked map[string]time.Time
+}
+
+var authGuard = &authGuardT{fails: map[string]int{}, blocked: map[string]time.Time{}}
+
+func remoteIP(client net.Conn) string {
+	ap, err := netip.ParseAddrPort(client.RemoteAddr().String())
+	if err != nil {
+		return client.RemoteAddr().String()
+	}
+	return ap.Addr().String()
+}
+
+// blockedUntil 查询 IP 是否处于封锁期；封锁过期自动清理
+func (g *authGuardT) blockedUntil(ip string) (time.Time, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	t, ok := g.blocked[ip]
+	if !ok {
+		return time.Time{}, false
+	}
+	if time.Now().Before(t) {
+		return t, true
+	}
+	delete(g.blocked, ip)
+	delete(g.fails, ip)
+	return time.Time{}, false
+}
+
+// fail 记录一次认证失败；达到上限则封锁并清零计数
+func (g *authGuardT) fail(ip string) {
+	if authLimit <= 0 {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.fails[ip]++
+	if g.fails[ip] >= authLimit {
+		g.blocked[ip] = time.Now().Add(time.Duration(authBlockSec) * time.Second)
+		delete(g.fails, ip)
+		log.Printf("【%s】认证失败达到 %d 次，封锁 %d 秒", ip, authLimit, authBlockSec)
+	}
+}
+
+// success 认证成功清零该 IP 的失败计数
+func (g *authGuardT) success(ip string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	delete(g.fails, ip)
 }
 
 // Socks5Auth 方法协商 + RFC 1929 用户名密码认证
@@ -155,6 +255,16 @@ func Socks5Auth(client net.Conn) error {
 		fmt.Println("【内网ip】" + client.RemoteAddr().String() + ";直接放过")
 		_, err := client.Write([]byte{0x05, 0x00})
 		return err
+	}
+
+	// 可选安全组件：认证封锁检查
+	ip := remoteIP(client)
+	if authLimit > 0 {
+		if t, blocked := authGuard.blockedUntil(ip); blocked {
+			// 方法协商阶段直接拒绝（0xFF = 无可接受方法）
+			_, _ = client.Write([]byte{0x05, 0xFF})
+			return fmt.Errorf("ip %s 认证已封锁至 %s", ip, t.Format("15:04:05"))
+		}
 	}
 
 	// 选择用户名密码认证方式
@@ -183,7 +293,11 @@ func Socks5Auth(client net.Conn) error {
 		return errors.New("reading password: " + err.Error())
 	}
 
-	if string(uname) == username && string(passwd) == password {
+	// 恒定时间比较，避免旁路泄露密码前缀信息
+	uOK := subtle.ConstantTimeCompare(uname, []byte(username)) == 1
+	pOK := subtle.ConstantTimeCompare(passwd, []byte(password)) == 1
+	if uOK && pOK {
+		authGuard.success(ip)
 		fmt.Println(client.RemoteAddr().String() + ":密码正确")
 		if logFlag {
 			go WriteFileLog(client.RemoteAddr().String()+":密码正确", 0)
@@ -193,6 +307,7 @@ func Socks5Auth(client net.Conn) error {
 		_, err := client.Write([]byte{0x01, 0x00})
 		return err
 	}
+	authGuard.fail(ip)
 	fmt.Println(client.RemoteAddr().String() + ":密码错误")
 	if logFlag {
 		go WriteFileLog(client.RemoteAddr().String()+":密码错误", 0)
@@ -426,6 +541,19 @@ func buildUDPDatagram(src *net.UDPAddr, payload []byte) []byte {
 	return append(pkt, payload...)
 }
 
+// idleTimeoutConn 可选安全组件：每条读操作前刷新读超时，空闲超时的连接被回收
+type idleTimeoutConn struct {
+	net.Conn
+	idle time.Duration
+}
+
+func (c *idleTimeoutConn) Read(p []byte) (int, error) {
+	if c.idle > 0 {
+		_ = c.Conn.SetReadDeadline(time.Now().Add(c.idle))
+	}
+	return c.Conn.Read(p)
+}
+
 func WriteFileLog(str string, isAuth int) {
 	var authName string
 	switch isAuth {
@@ -449,14 +577,11 @@ func WriteFileLog(str string, isAuth int) {
 
 func OpenFile(filename string) (*os.File, error) {
 	dir := logDir
-	if dir == "" {
-		dir = "output"
-	}
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 	// ★ 修正：原来只有 O_APPEND 没有写权限位，部分系统上写入即报错
-	return os.OpenFile(filepath.Join(dir, filename), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0666)
+	return os.OpenFile(filepath.Join(dir, filename), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 }
 
 func printLog(logInfo string) {
@@ -468,6 +593,9 @@ func printLog(logInfo string) {
 
 // Socks5Forward 双向转发 TCP 数据（阻塞至双向都结束）
 func Socks5Forward(client net.Conn, logInfo string, target net.Conn) {
+	if idleTimeout > 0 {
+		target = &idleTimeoutConn{Conn: target, idle: time.Duration(idleTimeout) * time.Second}
+	}
 	var wg sync.WaitGroup
 	wg.Add(2)
 	forward := func(dst, src net.Conn, flag bool) {

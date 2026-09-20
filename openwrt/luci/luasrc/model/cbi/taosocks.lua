@@ -60,6 +60,26 @@ o.datatype = "uinteger"
 o.default = "300"
 o.description = translate("UDP ASSOCIATE 中继的空闲超时，超时自动回收；0 或留空用默认值 300")
 
+o = s:option(Value, "max_conns", translate("最大并发连接数"))
+o.datatype = "uinteger"
+o.default = "0"
+o.description = translate("可选安全组件：并发连接上限，超出拒绝新连接；0=不限制（默认）")
+
+o = s:option(Value, "auth_limit", translate("认证失败封锁次数"))
+o.datatype = "uinteger"
+o.default = "0"
+o.description = translate("可选安全组件：同一 IP 认证失败 N 次后封锁一段时间；0=关闭（默认）")
+
+o = s:option(Value, "auth_block", translate("封锁时长(秒)"))
+o.datatype = "uinteger"
+o.default = "300"
+o.description = translate("认证封锁的时长，到期自动解除")
+
+o = s:option(Value, "idle_timeout", translate("连接空闲超时(秒)"))
+o.datatype = "uinteger"
+o.default = "0"
+o.description = translate("可选安全组件：认证后连接空闲超时自动断开；0=不限制（默认）")
+
 o = s:option(Value, "core_num", translate("工作线程数"))
 o.datatype = "uinteger"
 o.default = "0"

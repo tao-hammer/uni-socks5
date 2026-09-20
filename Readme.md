@@ -89,8 +89,14 @@ LuCI：`服务` → `Tao SOCKS5`。
 | `log_flag` | `0` | 是否写文件日志 |
 | `log_dir` | `/tmp/taosocks` | 日志目录 |
 | `udp_timeout` | `300` | UDP 中继会话空闲超时（秒） |
+| `max_conns` | `0` | 可选安全组件：最大并发连接数，0=不限制 |
+| `auth_limit` | `0` | 可选安全组件：单 IP 认证失败 N 次后封锁，0=关闭 |
+| `auth_block` | `300` | 认证封锁时长（秒），到期自动解除 |
+| `idle_timeout` | `0` | 可选安全组件：认证后连接空闲超时（秒），0=不限制 |
 | `open_firewall` | `1` | 是否自动放行端口 |
 | `firewall_src` | `wan` | 放行区域：`wan` / `lan` / `*` |
+
+安全组件（`max_conns` / `auth_limit` / `auth_block` / `idle_timeout`）**默认关闭**，0 = 不启用；按需通过 LuCI 或 UCI 开启。密码使用恒定时间比较，认证阶段有 30 秒读超时。
 
 ```sh
 uci set taosocks.main.port='1080'

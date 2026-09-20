@@ -17,7 +17,7 @@ bool_yaml() {
 }
 
 write_yaml() {
-	local port skip log_flag core_num username password log_dir udp_timeout
+	local port skip log_flag core_num username password log_dir udp_timeout max_conns auth_limit auth_block idle_timeout
 
 	config_get port main port 28000
 	config_get_bool skip main skip_private_check 0
@@ -27,11 +27,19 @@ write_yaml() {
 	config_get password main password admin
 	config_get log_dir main log_dir /tmp/taosocks
 	config_get udp_timeout main udp_timeout 300
+	config_get max_conns main max_conns 0
+	config_get auth_limit main auth_limit 0
+	config_get auth_block main auth_block 300
+	config_get idle_timeout main idle_timeout 0
 
 	[ -n "$port" ] || port=28000
 	[ -n "$core_num" ] || core_num=0
 	[ -n "$log_dir" ] || log_dir=/tmp/taosocks
 	[ -n "$udp_timeout" ] || udp_timeout=300
+	[ -n "$max_conns" ] || max_conns=0
+	[ -n "$auth_limit" ] || auth_limit=0
+	[ -n "$auth_block" ] || auth_block=300
+	[ -n "$idle_timeout" ] || idle_timeout=0
 
 	mkdir -p /var/etc "$log_dir"
 	cat > "$YAML" <<EOF
@@ -41,6 +49,10 @@ logFlag: $(bool_yaml "$log_flag")
 coreNum: ${core_num}
 logDir: "$(yaml_escape "$log_dir")"
 udpTimeout: ${udp_timeout}
+maxConns: ${max_conns}
+authLimit: ${auth_limit}
+authBlock: ${auth_block}
+idleTimeout: ${idle_timeout}
 user:
   username: "$(yaml_escape "$username")"
   password: "$(yaml_escape "$password")"
