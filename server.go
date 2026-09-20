@@ -51,6 +51,9 @@ func main() {
 		skipPrivateCheck = conf.SkipPrivateCheck
 		username = conf.User.Username
 		password = conf.User.Password
+		if conf.UdpTimeout > 0 {
+			udpTimeout = conf.UdpTimeout
+		}
 	}
 	if core == 0 {
 		core = runtime.NumCPU() * 2
