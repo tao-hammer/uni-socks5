@@ -1,0 +1,14 @@
+{
+	"luci-app-taosocks": {
+		"description": "Grant access to Tao SOCKS5",
+		"read": {
+			"uci": [ "taosocks" ],
+			"ubus": {
+				"service": [ "list" ]
+			}
+		},
+		"write": {
+			"uci": [ "taosocks" ]
+		}
+	}
+}

@@ -5,6 +5,7 @@ type Config struct {
 	SkipPrivateCheck bool   `yaml:"skipPrivateCheck"`
 	CoreNum          int    `yaml:"coreNum"`
 	LogFlag          bool   `yaml:"logFlag"`
+	LogDir           string `yaml:"logDir"`
 	UdpTimeout       int    `yaml:"udpTimeout"`
 	MaxConns         int    `yaml:"maxConns"`
 	AuthLimit        int    `yaml:"authLimit"`
@@ -13,5 +14,5 @@ type Config struct {
 	User             struct {
 		Username string `yaml:"username"`
 		Password string `yaml:"password"`
-	}
+	} `yaml:"user"`
 }

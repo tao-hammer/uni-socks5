@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"runtime"
 	"socks5/config"
 	"strconv"
@@ -27,6 +28,7 @@ var password string
 var core int
 var c string
 var udpTimeout int
+var logDir string
 
 // ---- 可选安全组件（默认关闭，0 = 不启用）----
 var maxConns int     // 最大并发连接数
@@ -51,6 +53,7 @@ func main() {
 	flag.IntVar(&authLimit, "auth-limit", 0, "单IP认证失败N次后封锁,0=关闭")
 	flag.IntVar(&authBlockSec, "auth-block", 300, "认证封锁时长(秒)")
 	flag.IntVar(&idleTimeout, "idle-timeout", 0, "连接空闲超时(秒),0=不限制")
+	flag.StringVar(&logDir, "logdir", "", "日志目录，默认 output")
 	flag.Parse()
 	if c != "" {
 		// 加载配置
@@ -79,6 +82,12 @@ func main() {
 		if conf.IdleTimeout > 0 {
 			idleTimeout = conf.IdleTimeout
 		}
+		if conf.LogDir != "" {
+			logDir = conf.LogDir
+		}
+	}
+	if logDir == "" {
+		logDir = "output"
 	}
 	if core == 0 {
 		core = runtime.NumCPU() * 2
@@ -567,12 +576,12 @@ func WriteFileLog(str string, isAuth int) {
 }
 
 func OpenFile(filename string) (*os.File, error) {
-	dir := "./output"
+	dir := logDir
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 	// ★ 修正：原来只有 O_APPEND 没有写权限位，部分系统上写入即报错
-	return os.OpenFile(dir+"/"+filename, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	return os.OpenFile(filepath.Join(dir, filename), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 }
 
 func printLog(logInfo string) {

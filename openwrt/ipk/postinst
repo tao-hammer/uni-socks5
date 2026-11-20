@@ -1,0 +1,22 @@
+#!/bin/sh
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+
+chmod 755 /usr/bin/taosocks /etc/init.d/taosocks \
+	/usr/lib/taosocks/ensure-uci.sh /usr/lib/taosocks/ensure-config-file.sh 2>/dev/null
+
+if [ -x /usr/lib/taosocks/ensure-uci.sh ]; then
+	/usr/lib/taosocks/ensure-uci.sh >/dev/null 2>&1 || true
+fi
+rm -f /etc/uci-defaults/99-taosocks /etc/config/taosocks-opkg
+# Older ipks tracked this as a conffile; drop it so opkg stops hashing the path.
+rm -f /usr/lib/opkg/info/tao-socks.conffiles
+
+rm -f /tmp/luci-indexcache* /tmp/luci-modulecache/* 2>/dev/null
+[ -x /etc/init.d/rpcd ] && /etc/init.d/rpcd reload >/dev/null 2>&1
+
+if [ -x /etc/init.d/taosocks ]; then
+	/etc/init.d/taosocks enable >/dev/null 2>&1 || true
+	/etc/init.d/taosocks restart >/dev/null 2>&1 || true
+fi
+
+exit 0
