@@ -99,10 +99,10 @@ sh scripts/build-ipk.sh
 
 | 目录 | 适用 | 安装文件 |
 |---|---|---|
-| `dist/x86_64/` | x86_64 | `tao-socks_1.0.8-1_x86_64.ipk` |
-| `dist/i386/` | 32 位 x86 | `tao-socks_1.0.8-1_i386_pentium4.ipk` |
-| `dist/armv7/` | 常见 32 位 ARM | `tao-socks_1.0.8-1_arm_cortex-a7_neon-vfpv4.ipk` |
-| `dist/aarch64/` | ARM64 | `tao-socks_1.0.8-1_aarch64_generic.ipk` |
+| `dist/x86_64/` | x86_64 | `tao-socks_1.0.9-1_x86_64.ipk` |
+| `dist/i386/` | 32 位 x86 | `tao-socks_1.0.9-1_i386_pentium4.ipk` |
+| `dist/armv7/` | 常见 32 位 ARM | `tao-socks_1.0.9-1_arm_cortex-a7_neon-vfpv4.ipk` |
+| `dist/aarch64/` | ARM64 | `tao-socks_1.0.9-1_aarch64_generic.ipk` |
 
 设备架构可在 SSH 里看：
 
@@ -113,7 +113,7 @@ opkg print-architecture
 若架构名不完全一致（例如 `aarch64_cortex-a53`、`i386`），可强制安装静态包：
 
 ```sh
-opkg install tao-socks_1.0.8-1_aarch64_generic.ipk --force-architecture
+opkg install tao-socks_1.0.9-1_aarch64_generic.ipk --force-architecture
 ```
 
 ### 安装
@@ -121,7 +121,7 @@ opkg install tao-socks_1.0.8-1_aarch64_generic.ipk --force-architecture
 把对应平台目录里的 ipk 拷到设备后（只需这一个）：
 
 ```sh
-opkg install /tmp/tao-socks_1.0.8-1_x86_64.ipk
+opkg install /tmp/tao-socks_1.0.9-1_x86_64.ipk
 ```
 
 默认 **启用并开机自启**，监听 **28000**，账密 **admin / admin**，并在 **wan** 放行该端口。  
@@ -169,7 +169,7 @@ uci commit taosocks
 
 ### 关于 UDP 中继
 
-UDP ASSOCIATE 的中继端口是**临时端口**（每次会话随机）。局域网内的客户端使用 UDP 中继无任何障碍；但**外网客户端**经防火墙访问时，UDP 数据报到达临时端口会被默认丢弃——如需外网 UDP，除放行 TCP 端口外，还要在外层（如 frp、路由器端口转发）显式转发 UDP，或将使用场景限制在局域网内。
+客户端的 UDP 与 TCP 使用同一个监听端口。防火墙和端口转发需要同时放行该端口的 TCP 和 UDP。发往目标网站的 UDP 从路由器自己的临时端口出去，回包由系统连接跟踪送回，不必再放行随机端口。
 
 ### 卸载
 

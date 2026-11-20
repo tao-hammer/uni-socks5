@@ -59,6 +59,60 @@ func TestSocks5AuthClashHandshake(t *testing.T) {
 	}
 }
 
+func TestUDPRelayUsesFixedPort(t *testing.T) {
+	if err := startUDPRelay(0); err != nil {
+		t.Fatal(err)
+	}
+	defer socksUDP.conn.Close()
+	relayPort := socksUDP.port
+
+	echo, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer echo.Close()
+	go func() {
+		buf := make([]byte, 1500)
+		for {
+			n, addr, err := echo.ReadFromUDP(buf)
+			if err != nil {
+				return
+			}
+			_, _ = echo.WriteToUDP(buf[:n], addr)
+		}
+	}()
+
+	client, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	sess := socksUDP.track(net.IPv4(127, 0, 0, 1))
+	defer sess.close()
+
+	echoAddr := echo.LocalAddr().(*net.UDPAddr)
+	pkt := buildUDPDatagram(echoAddr, []byte("ping"))
+	if _, err := client.WriteToUDP(pkt, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: relayPort}); err != nil {
+		t.Fatal(err)
+	}
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 1500)
+	n, _, err := client.ReadFromUDP(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, src, err := parseUDPDatagram(buf[:n])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(payload) != "ping" {
+		t.Fatalf("payload %q", payload)
+	}
+	if src.Port != echoAddr.Port {
+		t.Fatalf("reply from %s, echo is %s", src, echoAddr)
+	}
+}
+
 func TestSocks5ConnectUnsupportedCmdReplies07(t *testing.T) {
 	server, client := net.Pipe()
 	defer client.Close()

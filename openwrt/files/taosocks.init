@@ -107,7 +107,7 @@ apply_firewall() {
 		set firewall.${FW_SECTION}=rule
 		set firewall.${FW_SECTION}.name='Allow-TaoSOCKS'
 		set firewall.${FW_SECTION}.src='${src}'
-		set firewall.${FW_SECTION}.proto='tcp'
+		set firewall.${FW_SECTION}.proto='tcpudp'
 		set firewall.${FW_SECTION}.dest_port='${port}'
 		set firewall.${FW_SECTION}.target='ACCEPT'
 		set firewall.${FW_SECTION}.family='ipv4'

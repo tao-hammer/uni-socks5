@@ -103,7 +103,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("Listen failed: %v", err)
 	}
-	fmt.Printf("socks5 服务已启动 :%d\n", port)
+	if err := startUDPRelay(int(port)); err != nil {
+		log.Fatalf("UDP listen :%d failed: %v", port, err)
+	}
+	fmt.Printf("socks5 服务已启动 tcp/udp :%d\n", port)
 	// Go 的 Accept 本身是多路复用的，单个循环即可，无需手动开多个 accept 线程
 	for {
 		client, err := server.Accept()
@@ -399,79 +402,256 @@ func readAddr(r io.Reader, buf []byte, atyp byte) (string, error) {
 	}
 }
 
-// handleUDPAssociate 处理 UDP ASSOCIATE：开启 UDP 中继端口，
-// 中继存活期与 TCP 连接绑定（TCP 断开即会话结束）
-func handleUDPAssociate(client net.Conn) error {
-	uc, err := net.ListenUDP("udp", &net.UDPAddr{})
-	if err != nil {
-		_, _ = client.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
-		return errors.New("udp listen: " + err.Error())
-	}
-	udpAddr := uc.LocalAddr().(*net.UDPAddr)
-	// 回复中继地址：优先使用 TCP 连接本端所在接口的 IP，客户端才能找到
-	reply := make([]byte, 4, 22)
-	reply[0], reply[1], reply[2] = 0x05, 0x00, 0x00
-	var localIP net.IP
-	if ta, ok := client.LocalAddr().(*net.TCPAddr); ok {
-		localIP = ta.IP
-	}
-	if ip4 := localIP.To4(); ip4 != nil {
-		reply[3] = 0x01
-		reply = append(reply, ip4...)
-	} else {
-		reply[3] = 0x04
-		if localIP == nil {
-			localIP = net.IPv6unspecified
-		}
-		reply = append(reply, localIP.To16()...)
-	}
-	portBytes := make([]byte, 2)
-	binary.BigEndian.PutUint16(portBytes, uint16(udpAddr.Port))
-	reply = append(reply, portBytes...)
-	if _, err := client.Write(reply); err != nil {
-		uc.Close()
-		return errors.New("write udp rsp: " + err.Error())
-	}
-	go udpRelay(uc)
-	// 阻塞到 TCP 断开/出错，UDP 会话随之结束
-	_, err = io.Copy(io.Discard, client)
-	return err
+// udpFront 在与 TCP 相同的端口上接收客户端 UDP。
+// 发往目标的数据包从单独的临时端口出去，回包由系统连接跟踪送回，不必对每个会话放行随机端口。
+type udpFront struct {
+	conn     *net.UDPConn
+	port     int
+	mu       sync.Mutex
+	byClient map[string]*udpAssoc
+	pending  map[string][]*udpAssoc
 }
 
-// udpRelay 在 客户端<->目标 之间转发 UDP 数据报（RFC 1928 UDP 封装，仅支持 FRAG=0）
-func udpRelay(uc *net.UDPConn) {
-	defer uc.Close()
+type udpAssoc struct {
+	front     *udpFront
+	tcpIP     net.IP
+	mu        sync.Mutex
+	client    *net.UDPAddr
+	upstreams map[string]*net.UDPConn
+	closed    bool
+	upBytes   int
+	downBytes int
+}
+
+var socksUDP *udpFront
+
+func startUDPRelay(listenPort int) error {
+	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: listenPort})
+	if err != nil {
+		return err
+	}
+	actual := conn.LocalAddr().(*net.UDPAddr).Port
+	socksUDP = &udpFront{
+		conn:     conn,
+		port:     actual,
+		byClient: map[string]*udpAssoc{},
+		pending:  map[string][]*udpAssoc{},
+	}
+	go socksUDP.loop()
+	return nil
+}
+
+func (f *udpFront) loop() {
 	buf := make([]byte, 64*1024)
-	var clientAddr *net.UDPAddr
-	upBytes, downBytes := 0, 0
+	for {
+		n, addr, err := f.conn.ReadFromUDP(buf)
+		if err != nil {
+			return
+		}
+		pkt := make([]byte, n)
+		copy(pkt, buf[:n])
+		go f.dispatch(addr, pkt)
+	}
+}
+
+func (f *udpFront) dispatch(addr *net.UDPAddr, pkt []byte) {
+	key := addr.String()
+	ipKey := udpIPKey(addr.IP)
+	f.mu.Lock()
+	s := f.byClient[key]
+	if s == nil {
+		q := f.pending[ipKey]
+		if len(q) == 0 {
+			f.mu.Unlock()
+			return
+		}
+		s = q[0]
+		f.pending[ipKey] = q[1:]
+		if len(f.pending[ipKey]) == 0 {
+			delete(f.pending, ipKey)
+		}
+		s.mu.Lock()
+		s.client = addr
+		s.mu.Unlock()
+		f.byClient[key] = s
+	}
+	f.mu.Unlock()
+	s.forwardFromClient(pkt)
+}
+
+func (f *udpFront) track(ip net.IP) *udpAssoc {
+	s := &udpAssoc{
+		front:     f,
+		tcpIP:     ip,
+		upstreams: map[string]*net.UDPConn{},
+	}
+	f.mu.Lock()
+	k := udpIPKey(ip)
+	f.pending[k] = append(f.pending[k], s)
+	f.mu.Unlock()
+	return s
+}
+
+func (f *udpFront) detach(s *udpAssoc) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	k := udpIPKey(s.tcpIP)
+	q := f.pending[k]
+	for i, item := range q {
+		if item == s {
+			f.pending[k] = append(q[:i], q[i+1:]...)
+			break
+		}
+	}
+	if len(f.pending[k]) == 0 {
+		delete(f.pending, k)
+	}
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client != nil && f.byClient[client.String()] == s {
+		delete(f.byClient, client.String())
+	}
+}
+
+func (s *udpAssoc) close() {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	s.closed = true
+	for _, uc := range s.upstreams {
+		_ = uc.Close()
+	}
+	up, down := s.upBytes, s.downBytes
+	s.mu.Unlock()
+	s.front.detach(s)
+	printLog(fmt.Sprintf("【UDP】会话结束 上行:%dB 下行:%dB", up, down))
+}
+
+func (s *udpAssoc) forwardFromClient(pkt []byte) {
+	payload, dst, err := parseUDPDatagram(pkt)
+	if err != nil || dst == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return
+	}
+	key := dst.String()
+	uc := s.upstreams[key]
+	if uc == nil {
+		var lerr error
+		uc, lerr = net.ListenUDP("udp", nil)
+		if lerr != nil {
+			s.mu.Unlock()
+			return
+		}
+		s.upstreams[key] = uc
+		go s.pumpUpstream(uc)
+	}
+	s.upBytes += len(payload)
+	s.mu.Unlock()
+	_, _ = uc.WriteToUDP(payload, dst)
+}
+
+func (s *udpAssoc) pumpUpstream(uc *net.UDPConn) {
+	defer func() {
+		s.mu.Lock()
+		for k, c := range s.upstreams {
+			if c == uc {
+				delete(s.upstreams, k)
+				break
+			}
+		}
+		s.mu.Unlock()
+		_ = uc.Close()
+	}()
+	buf := make([]byte, 64*1024)
 	idle := time.Duration(udpTimeout) * time.Second
+	if idle <= 0 {
+		idle = 300 * time.Second
+	}
 	for {
 		_ = uc.SetReadDeadline(time.Now().Add(idle))
 		n, addr, err := uc.ReadFromUDP(buf)
 		if err != nil {
-			printLog(fmt.Sprintf("【UDP】会话结束 上行:%dB 下行:%dB", upBytes, downBytes))
 			return
 		}
-		if clientAddr == nil {
-			clientAddr = addr
+		pkt := buildUDPDatagram(addr, buf[:n])
+		s.mu.Lock()
+		client := s.client
+		closed := s.closed
+		if !closed {
+			s.downBytes += n
 		}
-		if addr.Port == clientAddr.Port && addr.IP.Equal(clientAddr.IP) {
-			// 来自客户端：解封装，转发到目标
-			payload, dst, err := parseUDPDatagram(buf[:n])
-			if err != nil || dst == nil {
-				continue
-			}
-			if m, err := uc.WriteToUDP(payload, dst); err == nil {
-				upBytes += m
-			}
-		} else {
-			// 来自目标：封装后回给客户端
-			pkt := buildUDPDatagram(addr, buf[:n])
-			if m, err := uc.WriteToUDP(pkt, clientAddr); err == nil {
-				downBytes += m
-			}
+		s.mu.Unlock()
+		if closed || client == nil {
+			return
 		}
+		_, _ = s.front.conn.WriteToUDP(pkt, client)
 	}
+}
+
+func udpIPKey(ip net.IP) string {
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.String()
+}
+
+func tcpRemoteIP(client net.Conn) net.IP {
+	switch a := client.RemoteAddr().(type) {
+	case *net.TCPAddr:
+		return a.IP
+	default:
+		host, _, err := net.SplitHostPort(a.String())
+		if err != nil {
+			return nil
+		}
+		return net.ParseIP(host)
+	}
+}
+
+// handleUDPAssociate 让客户端把 UDP 发到与 TCP 相同的端口。
+// 回复 0.0.0.0 / :: ，Clash 会改用它配置里的服务器地址。会话随 TCP 断开结束。
+func handleUDPAssociate(client net.Conn) error {
+	if socksUDP == nil {
+		_, _ = client.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+		return errors.New("udp relay not started")
+	}
+	ip := tcpRemoteIP(client)
+	if ip == nil {
+		_, _ = client.Write([]byte{0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+		return errors.New("udp client address")
+	}
+	sess := socksUDP.track(ip)
+	defer sess.close()
+	if err := writeUDPBindReply(client, socksUDP.port); err != nil {
+		return err
+	}
+	_, err := io.Copy(io.Discard, client)
+	return err
+}
+
+func writeUDPBindReply(client net.Conn, bindPort int) error {
+	ip := tcpRemoteIP(client)
+	portBytes := make([]byte, 2)
+	binary.BigEndian.PutUint16(portBytes, uint16(bindPort))
+	reply := []byte{0x05, 0x00, 0x00}
+	if ip != nil && ip.To4() == nil && ip.To16() != nil {
+		reply = append(reply, 0x04)
+		reply = append(reply, net.IPv6unspecified...)
+	} else {
+		reply = append(reply, 0x01, 0, 0, 0, 0)
+	}
+	reply = append(reply, portBytes...)
+	if _, err := client.Write(reply); err != nil {
+		return errors.New("write udp rsp: " + err.Error())
+	}
+	return nil
 }
 
 // parseUDPDatagram 解析客户端 UDP 封装报文: RSV(2) FRAG(1) ATYP ADDR PORT DATA

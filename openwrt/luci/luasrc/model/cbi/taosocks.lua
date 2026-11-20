@@ -58,7 +58,7 @@ o.default = "0"
 o = s:option(Value, "udp_timeout", translate("UDP 会话超时(秒)"))
 o.datatype = "uinteger"
 o.default = "300"
-o.description = translate("UDP ASSOCIATE 中继的空闲超时，超时自动回收；0 或留空用默认值 300")
+o.description = translate("客户端 UDP 与 TCP 使用同一监听端口。空闲超时后回收会话；0 或留空用默认值 300")
 
 o = s:option(Value, "max_conns", translate("最大并发连接数"))
 o.datatype = "uinteger"

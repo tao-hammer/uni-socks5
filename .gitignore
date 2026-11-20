@@ -19,3 +19,5 @@ dist/
 # 编译产物
 socks5
 output/
+
+udp-wan-report.md
