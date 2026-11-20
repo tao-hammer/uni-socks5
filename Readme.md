@@ -74,6 +74,30 @@ opkg install /tmp/tao-socks_1.0.8-1_x86_64.ipk
 
 LuCI：`服务` → `Tao SOCKS5`。
 
+### Clash / Mihomo
+
+节点必须填写 **与 LuCI 相同的用户名和密码**（没填或填成默认 `admin/admin` 会立刻显示超时）。延迟测试不要用 Google 的 `gstatic.com`，国内经这台代理 TLS 会被掐；改成会返回 204 的地址：
+
+```yaml
+proxies:
+  - name: tao-socks
+    type: socks5
+    server: 192.168.20.100
+    port: 28000
+    username: <LuCI用户名>
+    password: <LuCI密码>
+    udp: true
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies: [tao-socks]
+    url: https://www.gstatic.cn/generate_204
+    interval: 300
+```
+
+Clash Verge 全局测试 URL 也可改成 `https://www.gstatic.cn/generate_204` 或 `http://connect.rom.miui.com/generate_204`。
+
 ### UCI
 
 配置文件：`/etc/config/taosocks`

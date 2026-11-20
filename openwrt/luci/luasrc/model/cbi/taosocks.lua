@@ -1,7 +1,7 @@
 local sys = require "luci.sys"
 
 m = Map("taosocks", translate("Tao SOCKS5"),
-	translate("SOCKS5 代理服务。点「保存并应用」后会立即重启进程，无需重启路由器。外网访问请先改密码。"))
+	translate("SOCKS5 代理服务。点「保存并应用」后会立即重启进程，无需重启路由器。Clash 节点必须填写与本页相同的用户名和密码；延迟测试 URL 请用 https://www.gstatic.cn/generate_204 ，不要用 google 的 gstatic.com。"))
 
 m.apply_on_parse = false
 
